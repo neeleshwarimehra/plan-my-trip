@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.models.trip import Trip
 from app.schemas.trip import TripPlanRequest, TripPlanResponse
+from app.agents.graph import travel_graph
+
 
 
 def create_trip_plan(
@@ -12,23 +14,28 @@ def create_trip_plan(
     db: Session,
 ) -> TripPlanResponse:
 
-    budget_per_person = round(
-        request.budget / request.travelers, 2
-    )
+    graph_result = travel_graph.invoke({
+        "origin": request.origin,
+        "destination": request.destination,
+        "start_date": request.start_date.isoformat(),
+        "end_date": request.end_date.isoformat(),
+        "travelers": request.travelers,
+        "budget": request.budget,
+        "currency": request.currency,
+        "preferences": request.preferences,
+        "agent_trace": [],
+    })
 
-    summary = (
-        f"Trip from {request.origin} to {request.destination} "
-        f"for {request.travelers} traveler(s), "
-        f"with a total budget of {request.currency} "
-        f"{request.budget:,.2f}."
-    )
+    if graph_result.get("status") != "completed":
+        raise ValueError(
+            str(graph_result.get("errors", ["Trip planning failed."]))
+        )
 
-    next_steps = [
-        "Search available transportation options.",
-        "Compare hotels and accommodation.",
-        "Generate a day-wise travel itinerary.",
-        "Optimize the trip within your budget.",
-    ]
+    result = graph_result["final_response"]
+
+    budget_per_person = (
+        result["budget_analysis"]["budget_per_person"]
+    )
 
     trip = Trip(
         id=uuid4(),
@@ -40,25 +47,31 @@ def create_trip_plan(
         budget=request.budget,
         currency=request.currency,
         preferences=request.preferences,
-        status="draft",
-        summary=summary,
+        status="planned",
+        summary=result["summary"],
         estimated_budget_per_person=budget_per_person,
-        next_steps=next_steps,
+        next_steps=result["next_steps"],
+        plan_details={
+            **result["plan_details"],
+            "budget_analysis": result["budget_analysis"],
+            "agent_trace": graph_result.get("agent_trace", []),
+        },
     )
 
-    # Save the trip in PostgreSQL
     db.add(trip)
     db.commit()
     db.refresh(trip)
 
     return TripPlanResponse(
         trip_id=str(trip.id),
-        status="draft",
-        summary=summary,
+        status="planned",
+        summary=trip.summary,
         request=request,
         estimated_budget_per_person=budget_per_person,
-        next_steps=next_steps,
+        next_steps=trip.next_steps,
+        plan_details=trip.plan_details,
     )
+
 
 
 def get_all_trips(

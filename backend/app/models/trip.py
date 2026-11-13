@@ -12,6 +12,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -43,6 +44,12 @@ class Trip(Base):
     currency: Mapped[str] = mapped_column(
     String(3),
     default="INR",
+    nullable=False,
+)
+    plan_details: Mapped[dict] = mapped_column(
+    JSON,
+    default=dict,
+    server_default=text("'{}'"),
     nullable=False,
 )
 

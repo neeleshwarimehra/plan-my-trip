@@ -1,8 +1,6 @@
-
 import { useState } from "react";
 
-const API_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const API_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 function TripSearch() {
   const [origin, setOrigin] = useState("Indore");
@@ -58,15 +56,13 @@ function TripSearch() {
 
       if (!response.ok) {
         throw new Error(
-          data.detail || "Unable to create your trip. Please try again."
+          data.detail || "Unable to create your trip. Please try again.",
         );
       }
 
       setResult(data);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Something went wrong."
-      );
+      setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setLoading(false);
     }
@@ -145,14 +141,62 @@ function TripSearch() {
         </button>
       </div>
 
-      {error && <p role="alert" className="error-message">{error}</p>}
+      {error && (
+        <p role="alert" className="error-message">
+          {error}
+        </p>
+      )}
 
       {result && (
         <div className="trip-result">
-          <h3>🎉 Your trip has been created!</h3>
-          <p>{result.summary || "Your trip request was saved successfully."}</p>
-          {result.trip_id && <p>Trip ID: {result.trip_id}</p>}
-          {result.id && <p>Trip ID: {result.id}</p>}
+          <div className="result-heading">
+            <span>🎉</span>
+            <div>
+              <h3>Your AI travel plan is ready!</h3>
+              <p>{result.status || "Trip created successfully"}</p>
+            </div>
+          </div>
+
+          <div className="result-summary">
+            <h3>
+              {result.request?.origin} → {result.request?.destination}
+            </h3>
+
+            <p>{result.summary}</p>
+
+            {result.trip_id && (
+              <p className="trip-id">Trip ID: {result.trip_id}</p>
+            )}
+          </div>
+
+          <div className="result-budget">
+            <span>Estimated budget per person</span>
+            <strong>
+              {new Intl.NumberFormat("en-IN", {
+                style: "currency",
+                currency: result.request?.currency || "INR",
+                maximumFractionDigits: 0,
+              }).format(Number(result.estimated_budget_per_person || 0))}
+            </strong>
+          </div>
+
+          {result.next_steps?.length > 0 && (
+            <div className="result-next-steps">
+              <h4>Next steps</h4>
+              <ul>
+                {result.next_steps.map((step: string, index: number) => (
+                  <li key={index}>{step}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {result.plan_details && (
+            <details className="result-details">
+              <summary>View complete AI travel plan</summary>
+              <pre>{JSON.stringify(result.plan_details, null, 2)}</pre>
+            </details>
+          )}
         </div>
       )}
     </section>

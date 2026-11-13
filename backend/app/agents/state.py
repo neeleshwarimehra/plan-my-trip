@@ -4,7 +4,6 @@ import operator
 
 
 class TravelState(TypedDict, total=False):
-    # User trip requirements
     origin: str
     destination: str
     start_date: str
@@ -14,13 +13,11 @@ class TravelState(TypedDict, total=False):
     currency: str
     preferences: list[str]
 
-    # Agent outputs
-    transportation_options: list[dict[str, Any]]
-    hotel_options: list[dict[str, Any]]
-    itinerary: list[dict[str, Any]]
+    plan_details: dict[str, Any]
     budget_analysis: dict[str, Any]
+    summary: str
+    next_steps: list[str]
 
-    # Workflow tracking
     agent_trace: Annotated[list[str], operator.add]
     errors: list[str]
     status: str

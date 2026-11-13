@@ -20,33 +20,12 @@ interface Trip {
   next_steps?: string[];
 }
 
-interface TripEditForm {
-  origin: string;
-  destination: string;
-  start_date: string;
-  end_date: string;
-  travelers: number;
-  budget: number;
-}
-
 function MyTrips() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [deleting, setDeleting] = useState("");
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [editError, setEditError] = useState("");
-
-  const [editForm, setEditForm] = useState<TripEditForm>({
-    origin: "",
-    destination: "",
-    start_date: "",
-    end_date: "",
-    travelers: 1,
-    budget: 1,
-  });
 
   // Fetch all trips
   const loadTrips = useCallback(async () => {
@@ -111,7 +90,6 @@ function MyTrips() {
 
       if (selectedTrip?.id === id) {
         setSelectedTrip(null);
-        setEditing(false);
       }
     } catch (err) {
       alert(
@@ -121,112 +99,6 @@ function MyTrips() {
       );
     } finally {
       setDeleting("");
-    }
-  }
-
-  // Start editing
-  function startEditing() {
-    if (!selectedTrip) return;
-
-    setEditForm({
-      origin: selectedTrip.origin,
-      destination: selectedTrip.destination,
-      start_date: selectedTrip.start_date,
-      end_date: selectedTrip.end_date,
-      travelers: selectedTrip.travelers,
-      budget: Number(selectedTrip.budget),
-    });
-
-    setEditError("");
-    setEditing(true);
-  }
-
-  // Update trip
-  async function saveTripChanges(
-    event: React.FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
-
-    if (!selectedTrip) return;
-
-    setEditError("");
-
-    if (
-      !editForm.origin.trim() ||
-      !editForm.destination.trim()
-    ) {
-      setEditError("Origin and destination are required.");
-      return;
-    }
-
-    if (
-      editForm.origin.trim().toLowerCase() ===
-      editForm.destination.trim().toLowerCase()
-    ) {
-      setEditError("Origin and destination must be different.");
-      return;
-    }
-
-    if (editForm.end_date < editForm.start_date) {
-      setEditError("End date must be on or after start date.");
-      return;
-    }
-
-    if (
-      !Number.isInteger(editForm.travelers) ||
-      editForm.travelers < 1 ||
-      editForm.travelers > 20 ||
-      !Number.isFinite(editForm.budget) ||
-      editForm.budget <= 0
-    ) {
-      setEditError("Please enter valid travelers and budget.");
-      return;
-    }
-
-    setSaving(true);
-
-    try {
-      const response = await fetch(
-        `${API_URL}/api/trips/${selectedTrip.id}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            ...editForm,
-            origin: editForm.origin.trim(),
-            destination: editForm.destination.trim(),
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
-            : "Unable to update trip."
-        );
-      }
-
-      setTrips((current) =>
-        current.map((trip) =>
-          trip.id === data.id ? data : trip
-        )
-      );
-
-      setSelectedTrip(data);
-      setEditing(false);
-    } catch (err) {
-      setEditError(
-        err instanceof Error
-          ? err.message
-          : "Unable to save changes."
-      );
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -355,12 +227,7 @@ function MyTrips() {
               </div>
 
               <div className="trip-actions">
-                <button
-                  onClick={() => {
-                    setSelectedTrip(trip);
-                    setEditing(false);
-                  }}
-                >
+                <button onClick={() => setSelectedTrip(trip)}>
                   View details
                 </button>
 
@@ -383,10 +250,7 @@ function MyTrips() {
       {selectedTrip && (
         <div
           className="trip-modal-backdrop"
-          onClick={() => {
-            setSelectedTrip(null);
-            setEditing(false);
-          }}
+          onClick={() => setSelectedTrip(null)}
         >
           <div
             className="trip-modal"
@@ -397,10 +261,8 @@ function MyTrips() {
           >
             <button
               className="modal-close"
-              onClick={() => {
-                setSelectedTrip(null);
-                setEditing(false);
-              }}
+              aria-label="Close trip details"
+              onClick={() => setSelectedTrip(null)}
             >
               ✕
             </button>
@@ -409,186 +271,60 @@ function MyTrips() {
               {selectedTrip.origin} → {selectedTrip.destination}
             </h2>
 
-            {!editing ? (
-              <>
-                <p>{selectedTrip.summary}</p>
+            <p>{selectedTrip.summary}</p>
 
-                <p>
-                  <strong>Dates:</strong>{" "}
-                  {formatDate(selectedTrip.start_date)} –{" "}
-                  {formatDate(selectedTrip.end_date)}
-                </p>
+            <p>
+              <strong>Dates:</strong>{" "}
+              {formatDate(selectedTrip.start_date)} –{" "}
+              {formatDate(selectedTrip.end_date)}
+            </p>
 
-                <p>
-                  <strong>Travelers:</strong>{" "}
-                  {selectedTrip.travelers}
-                </p>
+            <p>
+              <strong>Travelers:</strong>{" "}
+              {selectedTrip.travelers}
+            </p>
 
-                <p>
-                  <strong>Budget:</strong>{" "}
-                  {formatMoney(
-                    Number(selectedTrip.budget),
-                    selectedTrip.currency
-                  )}
-                </p>
+            <p>
+              <strong>Budget:</strong>{" "}
+              {formatMoney(
+                Number(selectedTrip.budget),
+                selectedTrip.currency
+              )}
+            </p>
 
-                <p>
-                  <strong>Per person:</strong>{" "}
-                  {formatMoney(
-                    Number(selectedTrip.estimated_budget_per_person),
-                    selectedTrip.currency
-                  )}
-                </p>
+            <p>
+              <strong>Per person:</strong>{" "}
+              {formatMoney(
+                Number(selectedTrip.estimated_budget_per_person),
+                selectedTrip.currency
+              )}
+            </p>
 
-                <p>
-                  <strong>Status:</strong>{" "}
-                  {selectedTrip.status}
-                </p>
+            <p>
+              <strong>Status:</strong>{" "}
+              {selectedTrip.status}
+            </p>
 
-                <p>
-                  <strong>Preferences:</strong>{" "}
-                  {selectedTrip.preferences?.join(", ") || "None"}
-                </p>
+            <p>
+              <strong>Preferences:</strong>{" "}
+              {selectedTrip.preferences?.join(", ") || "None"}
+            </p>
 
-                <p className="trip-id">
-                  Trip ID: {selectedTrip.id}
-                </p>
-
-                <button onClick={startEditing}>
-                  ✏️ Edit Trip
-                </button>
-              </>
-            ) : (
-              <form
-                className="trip-edit-form"
-                onSubmit={saveTripChanges}
-              >
-                <h3>Edit Your Trip</h3>
-
-                {editError && (
-                  <p className="error-message" role="alert">
-                    {editError}
-                  </p>
-                )}
-
-                <label>
-                  Origin
-                  <input
-                    required
-                    minLength={2}
-                    maxLength={100}
-                    value={editForm.origin}
-                    onChange={(event) =>
-                      setEditForm({
-                        ...editForm,
-                        origin: event.target.value,
-                      })
-                    }
-                  />
-                </label>
-
-                <label>
-                  Destination
-                  <input
-                    required
-                    minLength={2}
-                    maxLength={100}
-                    value={editForm.destination}
-                    onChange={(event) =>
-                      setEditForm({
-                        ...editForm,
-                        destination: event.target.value,
-                      })
-                    }
-                  />
-                </label>
-
-                <label>
-                  Start Date
-                  <input
-                    required
-                    type="date"
-                    value={editForm.start_date}
-                    onChange={(event) =>
-                      setEditForm({
-                        ...editForm,
-                        start_date: event.target.value,
-                      })
-                    }
-                  />
-                </label>
-
-                <label>
-                  End Date
-                  <input
-                    required
-                    type="date"
-                    min={editForm.start_date}
-                    value={editForm.end_date}
-                    onChange={(event) =>
-                      setEditForm({
-                        ...editForm,
-                        end_date: event.target.value,
-                      })
-                    }
-                  />
-                </label>
-
-                <label>
-                  Travelers
-                  <input
-                    required
-                    type="number"
-                    min="1"
-                    max="20"
-                    value={editForm.travelers}
-                    onChange={(event) =>
-                      setEditForm({
-                        ...editForm,
-                        travelers: Number(event.target.value),
-                      })
-                    }
-                  />
-                </label>
-
-                <label>
-                  Budget (₹)
-                  <input
-                    required
-                    type="number"
-                    min="1"
-                    step="0.01"
-                    value={editForm.budget}
-                    onChange={(event) =>
-                      setEditForm({
-                        ...editForm,
-                        budget: Number(event.target.value),
-                      })
-                    }
-                  />
-                </label>
-
-                <div className="trip-actions">
-                  <button
-                    type="submit"
-                    disabled={saving}
-                  >
-                    {saving ? "Saving..." : "Save Changes"}
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => {
-                      setEditing(false);
-                      setEditError("");
-                    }}
-                  >
-                    Cancel
-                  </button>
+            {selectedTrip.next_steps &&
+              selectedTrip.next_steps.length > 0 && (
+                <div>
+                  <strong>Next steps:</strong>
+                  <ul>
+                    {selectedTrip.next_steps.map((step, index) => (
+                      <li key={index}>{step}</li>
+                    ))}
+                  </ul>
                 </div>
-              </form>
-            )}
+              )}
+
+            <p className="trip-id">
+              Trip ID: {selectedTrip.id}
+            </p>
           </div>
         </div>
       )}

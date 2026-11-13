@@ -28,11 +28,13 @@ class TripPlanRequest(BaseModel):
 
 class TripPlanResponse(BaseModel):
     trip_id: str
-    status: Literal["draft"]
+    status: str
     summary: str
     request: TripPlanRequest
     estimated_budget_per_person: float
     next_steps: list[str]
+    plan_details: dict
+    
 
 
 class TripRecordResponse(BaseModel):
@@ -53,6 +55,7 @@ class TripRecordResponse(BaseModel):
     next_steps: list[str]
     created_at: datetime
     updated_at: datetime
+    plan_details: dict
 
 class TripUpdateRequest(BaseModel):
     origin: str | None = Field(default=None, min_length=2, max_length=100)
