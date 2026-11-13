@@ -1,0 +1,54 @@
+# PlanMyTrip — Backend dependencies
+# Recommended interpreter: Python 3.14+
+# Install from the backend directory:
+#   python -m pip install --upgrade pip
+#   python -m pip install -r requirements.txt
+
+# API server
+fastapi>=0.115
+uvicorn[standard]>=0.34
+pydantic>=2.10
+pydantic-settings>=2.7
+python-dotenv>=1.0
+python-multipart>=0.0.20
+
+# Database: PostgreSQL + pgvector
+sqlalchemy>=2.0
+alembic>=1.14
+psycopg[binary,pool]>=3.2
+pgvector>=0.4
+
+# Cache and background-task infrastructure
+redis>=5.2
+
+# LangChain / LangGraph agent orchestration
+langchain>=1.0
+langchain-core>=1.0
+langchain-community>=0.4
+langgraph>=1.0
+langchain-groq>=1.0
+langchain-openai>=1.0
+
+# MCP tool integration and web search
+mcp>=1.0
+langchain-tavily>=0.2
+
+# HTTP clients, retries, serialization, and utilities
+httpx>=0.28
+aiohttp>=3.11
+tenacity>=9.0
+orjson>=3.10
+python-dateutil>=2.9
+
+# Logging, tracing, and metrics
+structlog>=25.1
+prometheus-client>=0.21
+opentelemetry-api>=1.29
+opentelemetry-sdk>=1.29
+opentelemetry-instrumentation-fastapi>=0.50b0
+
+# Testing and code quality
+pytest>=8.3
+pytest-asyncio>=0.25
+pytest-cov>=6.0
+ruff>=0.9
