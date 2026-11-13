@@ -1,4 +1,6 @@
-from typing import TypedDict, Any
+
+from typing import TypedDict, Any, Annotated
+import operator
 
 
 class TravelState(TypedDict, total=False):
@@ -19,7 +21,7 @@ class TravelState(TypedDict, total=False):
     budget_analysis: dict[str, Any]
 
     # Workflow tracking
-    agent_trace: list[str]
+    agent_trace: Annotated[list[str], operator.add]
     errors: list[str]
     status: str
     final_response: dict[str, Any]

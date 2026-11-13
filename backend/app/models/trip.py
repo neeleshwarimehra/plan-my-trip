@@ -40,7 +40,11 @@ class Trip(Base):
 
     travelers: Mapped[int] = mapped_column(Integer, nullable=False)
     budget: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
-    currency: Mapped[str] = mapped_column(String(3), default="INR")
+    currency: Mapped[str] = mapped_column(
+    String(3),
+    default="INR",
+    nullable=False,
+)
 
     preferences: Mapped[list] = mapped_column(
         JSON,
@@ -75,9 +79,9 @@ class Trip(Base):
     )
 
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-    )
+    DateTime(timezone=True),
+    server_default=func.now(),
+    onupdate=func.now(),
+    nullable=False,
+)
 
