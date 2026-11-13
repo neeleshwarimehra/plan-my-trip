@@ -1,6 +1,9 @@
 
+
+import { useState } from "react";
 import Sidebar from "./components/Sidebar";
 import TripSearch from "./components/TripSearch";
+import MyTrips from "./components/MyTrips";
 import DestinationCard from "./components/DestinationCard";
 import "./App.css";
 
@@ -29,43 +32,75 @@ const destinations = [
 ];
 
 function App() {
+  const [activePage, setActivePage] = useState("Dashboard");
+
   return (
     <div className="app-layout">
-      <Sidebar activePage="Dashboard" />
+      <Sidebar activePage={activePage} onNavigate={setActivePage} />
 
       <main className="main-content">
         <header className="topbar">
           <div>
             <span className="welcome-label">YOUR TRAVEL COMPANION</span>
-            <h1>Explore the world 🌍</h1>
+            <h1>
+              {activePage === "Dashboard" ? "Explore the world 🌍" : activePage}
+            </h1>
           </div>
-
           <div className="profile">
             <span>👤</span>
             <span>Traveler</span>
           </div>
         </header>
 
-        <TripSearch />
+        {activePage === "Dashboard" && (
+          <>
+            <TripSearch />
 
-        <section className="destinations-section">
-          <div className="section-heading">
-            <div>
-              <h2>Popular destinations</h2>
-              <p>Discover places worth exploring.</p>
+            <section className="destinations-section">
+              <div className="section-heading">
+                <div>
+                  <h2>Popular destinations</h2>
+                  <p>Discover places worth exploring.</p>
+                </div>
+                <button className="text-button" onClick={() => setActivePage("Explore")}>
+                  Explore more →
+                </button>
+              </div>
+
+              <div className="destination-grid">
+                {destinations.map((destination) => (
+                  <DestinationCard key={destination.name} {...destination} />
+                ))}
+              </div>
+            </section>
+          </>
+        )}
+
+        {activePage === "My Trips" && <MyTrips />}
+
+        {activePage === "Explore" && (
+          <section className="destinations-section">
+            <div className="section-heading">
+              <div>
+                <h2>Explore destinations 🌍</h2>
+                <p>Find inspiration for your next journey.</p>
+              </div>
             </div>
-            <span>Explore more →</span>
-          </div>
+            <div className="destination-grid">
+              {destinations.map((destination) => (
+                <DestinationCard key={destination.name} {...destination} />
+              ))}
+            </div>
+          </section>
+        )}
 
-          <div className="destination-grid">
-            {destinations.map((destination) => (
-              <DestinationCard
-                key={destination.name}
-                {...destination}
-              />
-            ))}
-          </div>
-        </section>
+        {activePage === "Bookings" && (
+          <section className="empty-trips">
+            <span>🎫</span>
+            <h3>Travel bookings</h3>
+            <p>Flight, train, bus and hotel booking integrations are coming next.</p>
+          </section>
+        )}
 
         <footer className="app-footer">
           PlanMyTrip © 2026 · Your AI travel companion
@@ -76,3 +111,4 @@ function App() {
 }
 
 export default App;
+

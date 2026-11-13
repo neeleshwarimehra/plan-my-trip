@@ -1,9 +1,11 @@
 
+
 interface SidebarProps {
   activePage: string;
+  onNavigate: (page: string) => void;
 }
 
-function Sidebar({ activePage }: SidebarProps) {
+function Sidebar({ activePage, onNavigate }: SidebarProps) {
   const navigation = [
     { name: "Dashboard", icon: "🏠" },
     { name: "My Trips", icon: "🧳" },
@@ -22,24 +24,22 @@ function Sidebar({ activePage }: SidebarProps) {
 
       <nav>
         {navigation.map((item) => (
-          <div
+          <button
             key={item.name}
-            className={`nav-item ${
-              activePage === item.name ? "active" : ""
-            }`}
+            type="button"
+            onClick={() => onNavigate(item.name)}
+            className={`nav-item ${activePage === item.name ? "active" : ""}`}
           >
             <span>{item.icon}</span>
             <span>{item.name}</span>
-          </div>
+          </button>
         ))}
       </nav>
 
-      <div className="sidebar-footer">
-        <span>⚙️</span>
-        Settings
-      </div>
+      <div className="sidebar-footer">⚙️ Settings</div>
     </aside>
   );
 }
 
 export default Sidebar;
+
