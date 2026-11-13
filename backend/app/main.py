@@ -2,17 +2,22 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Create the FastAPI application
+from app.api.routers.trips import router as trips_router
+
 app = FastAPI(
     title="PlanMyTrip API",
     description="AI-powered multi-agent travel planning platform",
     version="1.0.0",
 )
 
-# Allow our React frontend to communicate with FastAPI
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://plan-my-trip-bice.vercel.app",
+        "https://plan-my-trip-igazf805t-theindiedeveloper.vercel.app",
+        "https://plan-my-trip-ai-multi-agent-travel-planner.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -34,3 +39,7 @@ async def health_check():
         "application": "PlanMyTrip",
         "version": "1.0.0",
     }
+
+
+# Register database-backed trip routes
+app.include_router(trips_router)
