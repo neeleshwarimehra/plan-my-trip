@@ -1,122 +1,78 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+
+import Sidebar from "./components/Sidebar";
+import TripSearch from "./components/TripSearch";
+import DestinationCard from "./components/DestinationCard";
+import "./App.css";
+
+const destinations = [
+  {
+    name: "Goa",
+    country: "India",
+    description: "Beaches, sunsets and coastal adventures.",
+    image: "https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=700",
+    price: "₹8,000",
+  },
+  {
+    name: "Manali",
+    country: "Himachal Pradesh",
+    description: "Mountains, snow and beautiful valleys.",
+    image: "https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=700",
+    price: "₹6,500",
+  },
+  {
+    name: "Jaipur",
+    country: "Rajasthan",
+    description: "Royal palaces and rich cultural heritage.",
+    image: "https://images.unsplash.com/photo-1599661046827-dacff0c0f09a?w=700",
+    price: "₹5,000",
+  },
+];
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div className="app-layout">
+      <Sidebar activePage="Dashboard" />
 
-      <div className="ticks"></div>
+      <main className="main-content">
+        <header className="topbar">
+          <div>
+            <span className="welcome-label">YOUR TRAVEL COMPANION</span>
+            <h1>Explore the world 🌍</h1>
+          </div>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+          <div className="profile">
+            <span>👤</span>
+            <span>Traveler</span>
+          </div>
+        </header>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+        <TripSearch />
+
+        <section className="destinations-section">
+          <div className="section-heading">
+            <div>
+              <h2>Popular destinations</h2>
+              <p>Discover places worth exploring.</p>
+            </div>
+            <span>Explore more →</span>
+          </div>
+
+          <div className="destination-grid">
+            {destinations.map((destination) => (
+              <DestinationCard
+                key={destination.name}
+                {...destination}
+              />
+            ))}
+          </div>
+        </section>
+
+        <footer className="app-footer">
+          PlanMyTrip © 2026 · Your AI travel companion
+        </footer>
+      </main>
+    </div>
+  );
 }
 
-export default App
+export default App;
