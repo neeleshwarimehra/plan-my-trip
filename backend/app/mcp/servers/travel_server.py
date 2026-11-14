@@ -1,184 +1,196 @@
+import os
+import httpx
+from dotenv import load_dotenv
+from mcp.server.fastmcp import FastMCP
 
-import asyncio
+load_dotenv()
 
-from uuid import uuid4, UUID
+mcp = FastMCP("TravelToolsServer")
 
-from sqlalchemy.orm import Session
-
-from app.models.trip import Trip
-from app.schemas.trip import TripPlanRequest, TripPlanResponse
+AVIATION_API_KEY = os.getenv("AVIATION_API_KEY", "")
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 
 
-def create_trip_plan(
-    request: TripPlanRequest,
-    db: Session,
-) -> TripPlanResponse:
-    """
-    Execute the asynchronous LangGraph workflow from
-    the synchronous FastAPI service and persist the result.
-    """
+@mcp.tool()
+async def search_flights(
+    origin: str,
+    destination: str,
+    departure_date: str,
+    passengers: int = 1,
+) -> dict:
+    """Search live flights between origin and destination using Aviationstack."""
+    if not AVIATION_API_KEY:
+        return {"status": "skipped", "message": "AVIATION_API_KEY not set", "flights": []}
 
-    graph_input = {
-        "origin": request.origin,
-        "destination": request.destination,
-        "start_date": request.start_date.isoformat(),
-        "end_date": request.end_date.isoformat(),
-        "travelers": request.travelers,
-        "budget": request.budget,
-        "currency": request.currency,
-        "preferences": request.preferences,
-        "agent_trace": [],
+    url = "http://api.aviationstack.com/v1/flights"
+    params = {
+        "access_key": AVIATION_API_KEY,
+        "dep_iata": origin.strip().upper()[:3],
+        "arr_iata": destination.strip().upper()[:3],
+        "limit": 5,
     }
 
-    # This service is called from a synchronous FastAPI route.
-    graph_result = asyncio.run(
-        travel_graph.ainvoke(graph_input)
-    )
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        try:
+            resp = await client.get(url, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+            flights = [
+                {
+                    "airline": item.get("airline", {}).get("name"),
+                    "flight_number": item.get("flight", {}).get("iata"),
+                    "departure": item.get("departure", {}).get("scheduled"),
+                    "arrival": item.get("arrival", {}).get("scheduled"),
+                    "status": item.get("flight_status"),
+                }
+                for item in data.get("data", [])
+            ]
+            return {"status": "success", "passengers": passengers, "flights": flights}
+        except Exception as e:
+            return {"status": "error", "message": str(e), "flights": []}
 
-    if graph_result.get("status") != "completed":
-        raise ValueError(
-            str(
-                graph_result.get(
-                    "errors",
-                    ["Trip planning failed."]
-                )
+
+@mcp.tool()
+async def search_hotels(
+    destination: str,
+    check_in: str,
+    check_out: str,
+    budget_per_night: float | None = None,
+) -> dict:
+    """Search live hotel options and rates at the destination using Tavily."""
+    if not TAVILY_API_KEY:
+        return {"status": "skipped", "message": "TAVILY_API_KEY not set", "hotels": []}
+
+    budget_clause = f" under {budget_per_night} per night" if budget_per_night else ""
+    query = f"best hotels in {destination} from {check_in} to {check_out}{budget_clause} rates reviews"
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        try:
+            resp = await client.post(
+                "https://api.tavily.com/search",
+                json={
+                    "api_key": TAVILY_API_KEY,
+                    "query": query,
+                    "search_depth": "basic",
+                    "max_results": 5,
+                },
             )
-        )
-
-    result = graph_result["final_response"]
-
-    budget_per_person = (
-        result["budget_analysis"]["budget_per_person"]
-    )
-
-    trip = Trip(
-        id=uuid4(),
-        origin=request.origin,
-        destination=request.destination,
-        start_date=request.start_date,
-        end_date=request.end_date,
-        travelers=request.travelers,
-        budget=request.budget,
-        currency=request.currency,
-        preferences=request.preferences,
-        status="planned",
-        summary=result["summary"],
-        estimated_budget_per_person=budget_per_person,
-        next_steps=result["next_steps"],
-        plan_details={
-            **result["plan_details"],
-            "budget_analysis": result["budget_analysis"],
-            "preparation_checklist": (
-                result["preparation_checklist"]
-            ),
-            "agent_trace": graph_result.get(
-                "agent_trace", []
-            ),
-        },
-    )
-
-    try:
-        db.add(trip)
-        db.commit()
-        db.refresh(trip)
-
-    except Exception:
-        db.rollback()
-        raise
-
-    return TripPlanResponse(
-        trip_id=str(trip.id),
-        status="planned",
-        summary=trip.summary,
-        request=request,
-        estimated_budget_per_person=budget_per_person,
-        next_steps=trip.next_steps,
-        plan_details=trip.plan_details,
-    )
+            resp.raise_for_status()
+            results = resp.json().get("results", [])
+            hotels = [
+                {
+                    "title": r.get("title"),
+                    "url": r.get("url"),
+                    "snippet": r.get("content"),
+                }
+                for r in results
+            ]
+            return {"status": "success", "hotels": hotels}
+        except Exception as e:
+            return {"status": "error", "message": str(e), "hotels": []}
 
 
-def get_all_trips(
-    db: Session,
-    skip: int = 0,
-    limit: int = 10,
-) -> list[Trip]:
-    return (
-        db.query(Trip)
-        .order_by(Trip.created_at.desc())
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+@mcp.tool()
+async def get_destination_research_queries(
+    destination: str,
+    interests: list[str] | None = None,
+) -> dict:
+    """Generate destination research queries and fetch live Tavily destination highlights."""
+    interest_str = ", ".join(interests) if interests else "sightseeing, local food, culture"
+    queries = [
+        f"top things to do in {destination} for {interest_str}",
+        f"best local neighborhoods and transport tips in {destination}",
+        f"estimated daily travel expenses in {destination}",
+    ]
+
+    highlights = []
+    if TAVILY_API_KEY:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                resp = await client.post(
+                    "https://api.tavily.com/search",
+                    json={
+                        "api_key": TAVILY_API_KEY,
+                        "query": f"top travel attractions and tips in {destination} {interest_str}",
+                        "search_depth": "basic",
+                        "max_results": 4,
+                    },
+                )
+                resp.raise_for_status()
+                highlights = [
+                    {"title": r.get("title"), "snippet": r.get("content")}
+                    for r in resp.json().get("results", [])
+                ]
+            except Exception:
+                highlights = []
+
+    return {
+        "destination": destination,
+        "interests": interests or [],
+        "queries": queries,
+        "live_highlights": highlights,
+    }
 
 
-def get_trip_by_id(
-    trip_id: UUID,
-    db: Session,
-) -> Trip | None:
-    return db.query(Trip).filter(
-        Trip.id == trip_id
-    ).first()
+@mcp.tool()
+async def estimate_budget_allocation(
+    total_budget: float,
+    travelers: int,
+    days: int,
+    currency: str = "INR",
+) -> dict:
+    """Deterministically allocate trip budget across core travel categories."""
+    safe_days = max(days, 1)
+    safe_travelers = max(travelers, 1)
+
+    allocation = {
+        "transportation": round(total_budget * 0.30, 2),
+        "accommodation": round(total_budget * 0.35, 2),
+        "food": round(total_budget * 0.18, 2),
+        "activities": round(total_budget * 0.12, 2),
+        "miscellaneous": round(total_budget * 0.05, 2),
+    }
+
+    budget_per_person = round(total_budget / safe_travelers, 2)
+    daily_budget_per_person = round(budget_per_person / safe_days, 2)
+
+    return {
+        "total_budget": total_budget,
+        "travelers": safe_travelers,
+        "days": safe_days,
+        "budget_per_person": budget_per_person,
+        "daily_budget_per_person": daily_budget_per_person,
+        "currency": currency,
+        "allocation": allocation,
+        "is_estimate": True,
+    }
 
 
-def delete_trip(
-    trip_id: UUID,
-    db: Session,
-) -> bool:
-    trip = get_trip_by_id(trip_id, db)
+@mcp.tool()
+async def get_trip_preparation_checklist(
+    destination: str,
+    travelers: int = 1,
+) -> dict:
+    """Return a structured pre-trip preparation checklist for the destination."""
+    return {
+        "destination": destination,
+        "travelers": travelers,
+        "documents": [
+            "Government-issued photo ID / Passport (valid for 6+ months)",
+            "Confirmed flight/train tickets and hotel booking vouchers",
+            "Travel insurance policy details",
+        ],
+        "essentials": [
+            "Universal power adapter and portable power bank",
+            "Personal medications and basic first-aid kit",
+            "Weather-appropriate clothing and comfortable walking shoes",
+        ],
+        "finance_and_connectivity": [
+            "Notify bank / enable international or domestic UPI/card limits",
+            f"Download offline maps and local transit apps for {destination}",
+        ],
+    }
 
-    if trip is None:
-        return False
 
-    db.delete(trip)
-    db.commit()
-
-    return True
-
-
-def update_trip(
-    trip_id: UUID,
-    request,
-    db: Session,
-) -> Trip | None:
-
-    trip = get_trip_by_id(trip_id, db)
-
-    if trip is None:
-        return None
-
-    updates = request.model_dump(exclude_unset=True)
-
-    for field, value in updates.items():
-        setattr(trip, field, value)
-
-    if trip.origin.strip().casefold() == trip.destination.strip().casefold():
-        raise ValueError(
-            "Origin and destination must be different."
-        )
-
-    if trip.end_date < trip.start_date:
-        raise ValueError(
-            "End date must be on or after start date."
-        )
-
-    trip.estimated_budget_per_person = round(
-        float(trip.budget) / trip.travelers,
-        2,
-    )
-
-    trip.summary = (
-        f"Trip from {trip.origin} to {trip.destination} "
-        f"for {trip.travelers} traveler(s), "
-        f"with a total budget of {trip.currency} "
-        f"{float(trip.budget):,.2f}."
-    )
-
-    try:
-        db.commit()
-        db.refresh(trip)
-
-    except Exception:
-        db.rollback()
-        raise
-
-    return trip
+if __name__ == "__main__":
+    mcp.run(transport="stdio")

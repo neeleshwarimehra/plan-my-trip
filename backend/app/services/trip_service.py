@@ -1,22 +1,17 @@
-
 from uuid import uuid4, UUID
 
 from sqlalchemy.orm import Session
 
+from app.agents.graph import travel_graph
 from app.models.trip import Trip
 from app.schemas.trip import TripPlanRequest, TripPlanResponse
-# from app.agents.graph import travel_graph
 
 
-
-def create_trip_plan(
+async def create_trip_plan(
     request: TripPlanRequest,
     db: Session,
 ) -> TripPlanResponse:
-   
-    from app.agents.graph import travel_graph
-
-    graph_result = travel_graph.invoke({
+    graph_result = await travel_graph.ainvoke({
         "origin": request.origin,
         "destination": request.destination,
         "start_date": request.start_date.isoformat(),
@@ -34,10 +29,7 @@ def create_trip_plan(
         )
 
     result = graph_result["final_response"]
-
-    budget_per_person = (
-        result["budget_analysis"]["budget_per_person"]
-    )
+    budget_per_person = result["budget_analysis"]["budget_per_person"]
 
     trip = Trip(
         id=uuid4(),
@@ -60,9 +52,13 @@ def create_trip_plan(
         },
     )
 
-    db.add(trip)
-    db.commit()
-    db.refresh(trip)
+    try:
+        db.add(trip)
+        db.commit()
+        db.refresh(trip)
+    except Exception:
+        db.rollback()
+        raise
 
     return TripPlanResponse(
         trip_id=str(trip.id),
@@ -73,7 +69,6 @@ def create_trip_plan(
         next_steps=trip.next_steps,
         plan_details=trip.plan_details,
     )
-
 
 
 def get_all_trips(
@@ -94,9 +89,7 @@ def get_trip_by_id(
     trip_id: UUID,
     db: Session,
 ) -> Trip | None:
-    return db.query(Trip).filter(
-        Trip.id == trip_id
-    ).first()
+    return db.query(Trip).filter(Trip.id == trip_id).first()
 
 
 def delete_trip(
@@ -114,13 +107,11 @@ def delete_trip(
     return True
 
 
-
 def update_trip(
     trip_id: UUID,
     request,
     db: Session,
 ) -> Trip | None:
-
     trip = get_trip_by_id(trip_id, db)
 
     if trip is None:
@@ -131,19 +122,16 @@ def update_trip(
     for field, value in updates.items():
         setattr(trip, field, value)
 
-    # Validate the complete trip after applying partial updates.
     if trip.origin.strip().casefold() == trip.destination.strip().casefold():
         raise ValueError("Origin and destination must be different.")
 
     if trip.end_date < trip.start_date:
         raise ValueError("End date must be on or after start date.")
 
-    # Recalculate budget per person.
     trip.estimated_budget_per_person = round(
         float(trip.budget) / trip.travelers, 2
     )
 
-    # Regenerate summary.
     trip.summary = (
         f"Trip from {trip.origin} to {trip.destination} "
         f"for {trip.travelers} traveler(s), "

@@ -52,3 +52,8 @@ pytest>=8.3
 pytest-asyncio>=0.25
 pytest-cov>=6.0
 ruff>=0.9
+fastmcp==4.2.0
+fastmcp-slim==4.2.0
+langchain-mcp-adapters==0.3.2
+mcp==1.30.0
+mcp-types==2.3.0

@@ -1,10 +1,10 @@
-
 interface DestinationCardProps {
   name: string;
   country: string;
   description: string;
   image: string;
   price: string;
+  onSelect?: (destinationName: string, price: string) => void;
 }
 
 function DestinationCard({
@@ -13,6 +13,7 @@ function DestinationCard({
   description,
   image,
   price,
+  onSelect,
 }: DestinationCardProps) {
   return (
     <article className="destination-card">
@@ -25,7 +26,11 @@ function DestinationCard({
 
         <div className="destination-bottom">
           <span>From {price}</span>
-          <button type="button" aria-label={`Explore ${name}`}>
+          <button
+            type="button"
+            aria-label={`Explore ${name}`}
+            onClick={() => onSelect?.(name, price)}
+          >
             →
           </button>
         </div>

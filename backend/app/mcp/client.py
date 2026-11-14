@@ -1,36 +1,60 @@
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Any
+from langchain_mcp_adapters.client import MultiServerMCPClient
 
-from langchain.mcp import MCPAdapter
-
-from app.mcp.servers.travel_server import mcp as travel_mcp_server
-
-
-async def get_travel_mcp_tools():
-    """
-    Discover available tools from the PlanMyTrip MCP server.
-    """
-
-    # async with MCPAdapter(travel_mcp_server) as adapter:
-    async with MCPAdapter("http://127.0.0.1:8001/mcp") as adapter:
-        tools = await adapter.list_tools()
-
-    return tools
+SERVER_SCRIPT = str(
+    Path(__file__).resolve().parent / "servers" / "travel_server.py"
+)
 
 
-async def call_travel_mcp_tool(
-    tool_name: str,
-    arguments: dict,
-):
-    """
-    Execute an MCP tool while its adapter connection is open.
-    """
-
-    async with MCPAdapter("http://127.0.0.1:8001/mcp") as adapter:
-        tools = await adapter.list_tools()
-
-        for tool in tools:
-            if tool.name == tool_name:
-                return await tool.ainvoke(arguments)
-
-    raise ValueError(
-        f"MCP tool '{tool_name}' was not found."
+def get_mcp_client() -> MultiServerMCPClient:
+    return MultiServerMCPClient(
+        {
+            "travel": {
+                "command": sys.executable,
+                "args": [SERVER_SCRIPT],
+                "transport": "stdio",
+                "env": {
+                    **os.environ,
+                    "PYTHONUNBUFFERED": "1",
+                },
+            }
+        }
     )
+
+
+async def load_travel_tools():
+    client = get_mcp_client()
+    return await client.get_tools()
+
+
+async def call_travel_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> Any:
+    """Invoke an MCP tool by name and return parsed JSON/dict output."""
+    tools = await load_travel_tools()
+    tool_map = {tool.name: tool for tool in tools}
+
+    if tool_name not in tool_map:
+        raise ValueError(
+            f"MCP tool '{tool_name}' not found. Available: {list(tool_map.keys())}"
+        )
+
+    raw_result = await tool_map[tool_name].ainvoke(arguments)
+
+    if isinstance(raw_result, str):
+        try:
+            return json.loads(raw_result)
+        except json.JSONDecodeError:
+            return {"raw": raw_result}
+
+    if isinstance(raw_result, list) and raw_result and isinstance(raw_result[0], dict):
+        text_block = raw_result[0].get("text")
+        if isinstance(text_block, str):
+            try:
+                return json.loads(text_block)
+            except json.JSONDecodeError:
+                return {"raw": text_block}
+
+    return raw_result
