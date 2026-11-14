@@ -12,6 +12,7 @@ const destinations = [
     description: "Beaches, sunsets and coastal adventures.",
     image: "https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?w=700",
     price: "₹8,000",
+    numericPrice: 15000,
   },
   {
     name: "Manali",
@@ -19,6 +20,7 @@ const destinations = [
     description: "Mountains, snow and beautiful valleys.",
     image: "https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?w=700",
     price: "₹6,500",
+    numericPrice: 12000,
   },
   {
     name: "Jaipur",
@@ -26,11 +28,26 @@ const destinations = [
     description: "Royal palaces and rich cultural heritage.",
     image: "https://images.unsplash.com/photo-1599661046827-dacff0c0f09a?w=700",
     price: "₹5,000",
+    numericPrice: 10000,
   },
 ];
 
 function App() {
   const [activePage, setActivePage] = useState("Dashboard");
+  const [selectedDestination, setSelectedDestination] = useState("");
+  const [selectedBudget, setSelectedBudget] = useState<number | undefined>(
+    undefined
+  );
+
+  function handleSelectDestination(destinationName: string, price: string) {
+    const parsedPrice = Number(price.replace(/[^0-9]/g, ""));
+    setSelectedDestination(destinationName);
+    if (parsedPrice > 0) {
+      setSelectedBudget(parsedPrice);
+    }
+    setActivePage("Dashboard");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   return (
     <div className="app-layout">
@@ -52,7 +69,10 @@ function App() {
 
         {activePage === "Dashboard" && (
           <>
-            <TripSearch />
+            <TripSearch
+              prefilledDestination={selectedDestination}
+              prefilledBudget={selectedBudget}
+            />
 
             <section className="destinations-section">
               <div className="section-heading">
@@ -60,14 +80,21 @@ function App() {
                   <h2>Popular destinations</h2>
                   <p>Discover places worth exploring.</p>
                 </div>
-                <button className="text-button" onClick={() => setActivePage("Explore")}>
+                <button
+                  className="text-button"
+                  onClick={() => setActivePage("Explore")}
+                >
                   Explore more →
                 </button>
               </div>
 
               <div className="destination-grid">
                 {destinations.map((destination) => (
-                  <DestinationCard key={destination.name} {...destination} />
+                  <DestinationCard
+                    key={destination.name}
+                    {...destination}
+                    onSelect={handleSelectDestination}
+                  />
                 ))}
               </div>
             </section>
@@ -81,12 +108,16 @@ function App() {
             <div className="section-heading">
               <div>
                 <h2>Explore destinations 🌍</h2>
-                <p>Find inspiration for your next journey.</p>
+                <p>Click → on any destination to plan your trip right away.</p>
               </div>
             </div>
             <div className="destination-grid">
               {destinations.map((destination) => (
-                <DestinationCard key={destination.name} {...destination} />
+                <DestinationCard
+                  key={destination.name}
+                  {...destination}
+                  onSelect={handleSelectDestination}
+                />
               ))}
             </div>
           </section>
@@ -96,7 +127,9 @@ function App() {
           <section className="empty-trips">
             <span>🎫</span>
             <h3>Travel bookings</h3>
-            <p>Flight, train, bus and hotel booking integrations are coming next.</p>
+            <p>
+              Flight, train, bus and hotel booking integrations are coming next.
+            </p>
           </section>
         )}
 
@@ -109,4 +142,3 @@ function App() {
 }
 
 export default App;
-

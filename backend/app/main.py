@@ -1,4 +1,4 @@
-
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,6 +10,12 @@ app = FastAPI(
     version="1.0.0",
 )
 
+extra_origins = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -17,7 +23,9 @@ app.add_middleware(
         "https://plan-my-trip-bice.vercel.app",
         "https://plan-my-trip-igazf805t-theindiedeveloper.vercel.app",
         "https://plan-my-trip-ai-multi-agent-travel-planner.vercel.app",
+        *extra_origins,
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -41,5 +49,4 @@ async def health_check():
     }
 
 
-# Register database-backed trip routes
 app.include_router(trips_router)

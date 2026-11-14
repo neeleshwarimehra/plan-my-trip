@@ -1,8 +1,10 @@
 
 import { useCallback, useEffect, useState } from "react";
+import { API_ENDPOINTS } from "../config/config.api";
 
 const API_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+  fetch(`${API_ENDPOINTS.trips}?skip=0&limit=100`)
+  // import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 interface Trip {
   id: string;

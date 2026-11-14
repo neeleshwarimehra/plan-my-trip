@@ -1,5 +1,6 @@
-
+import asyncio
 import json
+import re
 from datetime import date
 
 from app.agents.state import TravelState
@@ -7,11 +8,37 @@ from app.core.llm import get_llm
 from app.mcp.client import call_travel_mcp_tool
 
 
-def supervisor_agent(state: TravelState) -> dict:
-    """
-    Validate trip requirements before starting the workflow.
-    """
+def _parse_llm_json(raw_content: str) -> dict:
+    """Safely extract and parse JSON from an LLM response, repairing minor syntax issues."""
+    text = raw_content.strip()
 
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+
+    start_idx = text.find("{")
+    end_idx = text.rfind("}")
+
+    if start_idx == -1 or end_idx == -1:
+        raise ValueError("LLM did not return a JSON object.")
+
+    candidate = text[start_idx : end_idx + 1]
+
+    # First attempt: standard parse (strict=False allows raw control chars/newlines in strings)
+    try:
+        return json.loads(candidate, strict=False)
+    except json.JSONDecodeError:
+        pass
+
+    # Second attempt: remove trailing commas before } or ]
+    cleaned = re.sub(r",\s*([}\]])", r"\1", candidate)
+    try:
+        return json.loads(cleaned, strict=False)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON returned by AI model: {exc}") from exc
+
+
+def supervisor_agent(state: TravelState) -> dict:
+    """Validate trip requirements before starting the workflow."""
     required = [
         "origin",
         "destination",
@@ -21,18 +48,12 @@ def supervisor_agent(state: TravelState) -> dict:
         "budget",
     ]
 
-    missing = [
-        field
-        for field in required
-        if state.get(field) is None
-    ]
+    missing = [field for field in required if state.get(field) is None]
 
     if missing:
         return {
             "status": "failed",
-            "errors": [
-                f"Missing fields: {', '.join(missing)}"
-            ],
+            "errors": [f"Missing fields: {', '.join(missing)}"],
             "agent_trace": ["supervisor_agent"],
         }
 
@@ -60,44 +81,83 @@ def supervisor_agent(state: TravelState) -> dict:
 
 
 async def planner_agent(state: TravelState) -> dict:
-    """
-    Generate an itinerary using Groq and destination research MCP.
-    """
-
+    """Generate an itinerary using LLM + live MCP tools (Research, Aviationstack, Tavily)."""
     destination = state["destination"]
 
-    research_result = await call_travel_mcp_tool(
-        "get_destination_research_queries",
-        {
-            "destination": destination,
-            "interests": state.get("preferences") or None,
-        },
+    research_result, flight_result, hotel_result = await asyncio.gather(
+        call_travel_mcp_tool(
+            "get_destination_research_queries",
+            {
+                "destination": destination,
+                "interests": state.get("preferences") or None,
+            },
+        ),
+        call_travel_mcp_tool(
+            "search_flights",
+            {
+                "origin": state["origin"],
+                "destination": destination,
+                "departure_date": state["start_date"],
+                "passengers": state["travelers"],
+            },
+        ),
+        call_travel_mcp_tool(
+            "search_hotels",
+            {
+                "destination": destination,
+                "check_in": state["start_date"],
+                "check_out": state["end_date"],
+            },
+        ),
     )
 
     llm = get_llm()
 
+    # Enable native JSON mode if supported by the LangChain chat model
+    try:
+        structured_llm = llm.bind(response_format={"type": "json_object"})
+    except Exception:
+        structured_llm = llm
+
+    # Truncate verbose web snippets to prevent quote-escaping issues and token bloat
+    trimmed_hotels = [
+        {
+            "title": h.get("title", ""),
+            "snippet": (h.get("snippet") or "")[:220],
+        }
+        for h in hotel_result.get("hotels", [])[:4]
+    ]
+    trimmed_highlights = [
+        {
+            "title": h.get("title", ""),
+            "snippet": (h.get("snippet") or "")[:220],
+        }
+        for h in research_result.get("live_highlights", [])[:4]
+    ]
+
     prompt = f"""
 You are an expert AI travel planning assistant.
+Return ONLY a single valid JSON object. Escape any double quotes inside string values.
 
-Create a practical travel plan using these requirements.
+Trip requirements:
+- Origin: {state['origin']}
+- Destination: {destination}
+- Start date: {state['start_date']}
+- End date: {state['end_date']}
+- Travelers: {state['travelers']}
+- Total budget: {state['budget']} {state.get('currency', 'INR')}
+- Preferences: {state.get('preferences', [])}
 
-Origin: {state['origin']}
-Destination: {destination}
-Start date: {state['start_date']}
-End date: {state['end_date']}
-Travelers: {state['travelers']}
-Total budget: {state['budget']} {state.get('currency', 'INR')}
-Preferences: {state.get('preferences', [])}
+Destination highlights:
+{json.dumps(trimmed_highlights, ensure_ascii=False)}
 
-Destination research queries:
-{json.dumps(research_result, ensure_ascii=False, default=str)}
+Live flight results:
+{json.dumps(flight_result.get("flights", []), ensure_ascii=False)}
 
-Use the research queries as guidance for destination-specific
-recommendations. They are search suggestions, not verified
-live research results.
+Live hotel results:
+{json.dumps(trimmed_hotels, ensure_ascii=False)}
 
-Return ONLY valid JSON with this structure:
-
+Required JSON schema:
 {{
   "destination_overview": "string",
   "transportation_options": [
@@ -135,38 +195,19 @@ Return ONLY valid JSON with this structure:
 Rules:
 - Create a day-wise itinerary for the requested dates.
 - Keep estimates within the total budget where practical.
-- Use the requested currency.
-- Make recommendations relevant to the destination.
-- Do not invent live transportation or hotel availability.
-- Transportation and hotel options are suggestions, not bookings.
-- Return valid JSON without Markdown fences.
+- Use {state.get('currency', 'INR')} for all amounts.
+- Do NOT include markdown fences or any text outside the JSON object.
 """
 
-    response = await llm.ainvoke(prompt)
-
+    response = await structured_llm.ainvoke(prompt)
     content = response.content
 
     if isinstance(content, list):
         content = "".join(
-            item.get("text", "")
-            for item in content
-            if isinstance(item, dict)
+            item.get("text", "") for item in content if isinstance(item, dict)
         )
 
-    content = str(content).strip()
-
-    if content.startswith("```"):
-        content = content.split("\n", 1)[1].rsplit("```", 1)[0]
-
-    start = content.find("{")
-    end = content.rfind("}")
-
-    if start == -1 or end == -1:
-        raise ValueError(
-            "Groq returned an invalid JSON travel plan."
-        )
-
-    plan = json.loads(content[start:end + 1])
+    plan = _parse_llm_json(str(content))
 
     required_output = [
         "destination_overview",
@@ -177,15 +218,12 @@ Rules:
         "recommendations",
     ]
 
-    missing = [
-        key for key in required_output
-        if key not in plan
-    ]
-
+    missing = [key for key in required_output if key not in plan]
     if missing:
-        raise ValueError(
-            f"AI response missing fields: {', '.join(missing)}"
-        )
+        raise ValueError(f"AI response missing fields: {', '.join(missing)}")
+
+    plan["live_flights"] = flight_result.get("flights", [])
+    plan["live_hotels"] = hotel_result.get("hotels", [])
 
     return {
         "plan_details": plan,
@@ -195,13 +233,9 @@ Rules:
 
 
 async def budget_agent(state: TravelState) -> dict:
-    """
-    Analyze the budget using the Budget Allocation MCP tool.
-    """
-
+    """Analyze the budget using the Budget Allocation MCP tool."""
     start = date.fromisoformat(state["start_date"])
     end = date.fromisoformat(state["end_date"])
-
     days = (end - start).days + 1
 
     budget_result = await call_travel_mcp_tool(
@@ -221,22 +255,14 @@ async def budget_agent(state: TravelState) -> dict:
         "travelers": budget_result["travelers"],
         "days": budget_result["days"],
         "budget_per_person": budget_result["budget_per_person"],
-        "daily_budget_per_person": (
-            budget_result["daily_budget_per_person"]
-        ),
+        "daily_budget_per_person": budget_result["daily_budget_per_person"],
         "currency": budget_result["currency"],
         "estimated_breakdown": allocation,
         "is_estimate": budget_result["is_estimate"],
     }
 
-    # Preserve the LLM's original estimate for comparison.
     plan_details = dict(state["plan_details"])
-
-    plan_details["llm_budget_breakdown"] = (
-        plan_details.get("budget_breakdown", {})
-    )
-
-    # Use deterministic MCP allocation as the primary breakdown.
+    plan_details["llm_budget_breakdown"] = plan_details.get("budget_breakdown", {})
     plan_details["budget_breakdown"] = allocation
     plan_details["mcp_budget_allocation"] = budget_result
 
@@ -249,10 +275,7 @@ async def budget_agent(state: TravelState) -> dict:
 
 
 async def final_response_agent(state: TravelState) -> dict:
-    """
-    Generate the final response and preparation checklist using MCP.
-    """
-
+    """Generate the final response and preparation checklist using MCP."""
     destination = state["destination"]
 
     checklist_result = await call_travel_mcp_tool(
@@ -280,9 +303,7 @@ async def final_response_agent(state: TravelState) -> dict:
 
     plan_details = {
         **state["plan_details"],
-        "destination_research": state.get(
-            "destination_research", {}
-        ),
+        "destination_research": state.get("destination_research", {}),
         "preparation_checklist": checklist_result,
         "budget_analysis": state["budget_analysis"],
     }

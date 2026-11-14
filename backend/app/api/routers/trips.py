@@ -30,11 +30,22 @@ router = APIRouter(
     response_model=TripPlanResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def plan_trip(
+async def plan_trip(
     request: TripPlanRequest,
     db: Session = Depends(get_db),
 ) -> TripPlanResponse:
-    return create_trip_plan(request, db)
+    try:
+        return await create_trip_plan(request, db)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate trip plan: {exc}",
+        )
 
 
 @router.get(
@@ -66,7 +77,6 @@ def retrieve_trip(
         )
 
     return trip
-
 
 
 @router.patch(
