@@ -1,6 +1,7 @@
-const rawBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
+const rawBaseUrl =
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.DEV ? "http://localhost:8000" : "");
 
-// Remove any trailing slash; if empty in production, falls back to same-origin /api proxy
 export const API_BASE_URL = rawBaseUrl.replace(/\/+$/, "");
 
 export const API_ENDPOINTS = {
