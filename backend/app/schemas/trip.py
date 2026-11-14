@@ -1,8 +1,9 @@
-from datetime import date
-from typing import Literal
+
 from datetime import date, datetime
+from typing import Any
 from uuid import UUID
-from pydantic import BaseModel,ConfigDict, Field, model_validator
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class TripPlanRequest(BaseModel):
@@ -33,8 +34,7 @@ class TripPlanResponse(BaseModel):
     request: TripPlanRequest
     estimated_budget_per_person: float
     next_steps: list[str]
-    plan_details: dict
-    
+    plan_details: dict[str, Any]
 
 
 class TripRecordResponse(BaseModel):
@@ -55,7 +55,8 @@ class TripRecordResponse(BaseModel):
     next_steps: list[str]
     created_at: datetime
     updated_at: datetime
-    plan_details: dict
+    plan_details: dict[str, Any]
+
 
 class TripUpdateRequest(BaseModel):
     origin: str | None = Field(default=None, min_length=2, max_length=100)
@@ -73,8 +74,10 @@ class TripUpdateRequest(BaseModel):
         if isinstance(values, dict):
             if not values:
                 raise ValueError("At least one field must be provided.")
+
             if any(value is None for value in values.values()):
                 raise ValueError("Fields cannot be null.")
+
         return values
 
     @model_validator(mode="after")

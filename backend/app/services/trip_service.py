@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models.trip import Trip
 from app.schemas.trip import TripPlanRequest, TripPlanResponse
-from app.agents.graph import travel_graph
+# from app.agents.graph import travel_graph
 
 
 
@@ -13,6 +13,8 @@ def create_trip_plan(
     request: TripPlanRequest,
     db: Session,
 ) -> TripPlanResponse:
+   
+    from app.agents.graph import travel_graph
 
     graph_result = travel_graph.invoke({
         "origin": request.origin,

@@ -1,128 +1,184 @@
 
-import json
-from fastmcp import FastMCP
+import asyncio
 
-# Initialize PlanMyTrip MCP Server
-mcp = FastMCP("PlanMyTrip Travel Server")
+from uuid import uuid4, UUID
+
+from sqlalchemy.orm import Session
+
+from app.models.trip import Trip
+from app.schemas.trip import TripPlanRequest, TripPlanResponse
 
 
-@mcp.tool
-def estimate_budget_allocation(
-    total_budget: float,
-    travelers: int,
-    days: int,
-    currency: str = "INR",
-) -> dict:
+def create_trip_plan(
+    request: TripPlanRequest,
+    db: Session,
+) -> TripPlanResponse:
     """
-    Estimate a trip budget allocation across major travel categories.
-
-    The total budget covers all travelers combined.
-    This is an estimate, not a live price quotation.
+    Execute the asynchronous LangGraph workflow from
+    the synchronous FastAPI service and persist the result.
     """
 
-    if total_budget <= 0:
-        raise ValueError("Total budget must be greater than zero.")
-
-    if travelers <= 0:
-        raise ValueError("Travelers must be greater than zero.")
-
-    if days <= 0:
-        raise ValueError("Days must be greater than zero.")
-
-    percentages = {
-        "transportation": 35,
-        "accommodation": 30,
-        "food": 20,
-        "activities": 10,
-        "miscellaneous": 5,
+    graph_input = {
+        "origin": request.origin,
+        "destination": request.destination,
+        "start_date": request.start_date.isoformat(),
+        "end_date": request.end_date.isoformat(),
+        "travelers": request.travelers,
+        "budget": request.budget,
+        "currency": request.currency,
+        "preferences": request.preferences,
+        "agent_trace": [],
     }
 
-    breakdown = {
-        category: round(total_budget * percentage / 100, 2)
-        for category, percentage in percentages.items()
-    }
+    # This service is called from a synchronous FastAPI route.
+    graph_result = asyncio.run(
+        travel_graph.ainvoke(graph_input)
+    )
 
-    return {
-        "total_budget": total_budget,
-        "travelers": travelers,
-        "days": days,
-        "budget_per_person": round(total_budget / travelers, 2),
-        "daily_budget_per_person": round(
-            total_budget / travelers / days, 2
-        ),
-        "allocation": breakdown,
-        "currency": currency,
-        "is_estimate": True,
-    }
+    if graph_result.get("status") != "completed":
+        raise ValueError(
+            str(
+                graph_result.get(
+                    "errors",
+                    ["Trip planning failed."]
+                )
+            )
+        )
 
+    result = graph_result["final_response"]
 
-@mcp.tool
-def get_destination_research_queries(
-    destination: str,
-    interests: list[str] | None = None,
-) -> dict:
-    """
-    Generate targeted research queries for a travel destination.
+    budget_per_person = (
+        result["budget_analysis"]["budget_per_person"]
+    )
 
-    This tool generates search queries; it does not claim to
-    retrieve live destination information.
-    """
+    trip = Trip(
+        id=uuid4(),
+        origin=request.origin,
+        destination=request.destination,
+        start_date=request.start_date,
+        end_date=request.end_date,
+        travelers=request.travelers,
+        budget=request.budget,
+        currency=request.currency,
+        preferences=request.preferences,
+        status="planned",
+        summary=result["summary"],
+        estimated_budget_per_person=budget_per_person,
+        next_steps=result["next_steps"],
+        plan_details={
+            **result["plan_details"],
+            "budget_analysis": result["budget_analysis"],
+            "preparation_checklist": (
+                result["preparation_checklist"]
+            ),
+            "agent_trace": graph_result.get(
+                "agent_trace", []
+            ),
+        },
+    )
 
-    if not destination.strip():
-        raise ValueError("Destination cannot be empty.")
+    try:
+        db.add(trip)
+        db.commit()
+        db.refresh(trip)
 
-    interests = interests or [
-        "tourist attractions",
-        "local food",
-        "transportation",
-        "popular experiences",
-    ]
+    except Exception:
+        db.rollback()
+        raise
 
-    queries = [
-        f"Best {interest} in {destination}"
-        for interest in interests
-    ]
-
-    return {
-        "destination": destination,
-        "research_queries": queries,
-        "requires_external_research": True,
-    }
-
-
-@mcp.tool
-def get_trip_preparation_checklist(
-    destination: str,
-    travelers: int,
-) -> dict:
-    """
-    Generate a general preparation checklist for a trip.
-    """
-
-    if not destination.strip():
-        raise ValueError("Destination cannot be empty.")
-
-    if travelers <= 0:
-        raise ValueError("Travelers must be greater than zero.")
-
-    checklist = [
-        "Verify transportation schedules and availability.",
-        "Compare accommodation prices.",
-        "Check destination weather forecasts.",
-        "Prepare government-approved identification.",
-        "Review local transportation options.",
-        "Check applicable entry requirements.",
-        "Keep emergency contacts available.",
-        "Confirm bookings before departure.",
-    ]
-
-    return {
-        "destination": destination,
-        "travelers": travelers,
-        "checklist": checklist,
-        "items_count": len(checklist),
-    }
+    return TripPlanResponse(
+        trip_id=str(trip.id),
+        status="planned",
+        summary=trip.summary,
+        request=request,
+        estimated_budget_per_person=budget_per_person,
+        next_steps=trip.next_steps,
+        plan_details=trip.plan_details,
+    )
 
 
-if __name__ == "__main__":
-    mcp.run()
+def get_all_trips(
+    db: Session,
+    skip: int = 0,
+    limit: int = 10,
+) -> list[Trip]:
+    return (
+        db.query(Trip)
+        .order_by(Trip.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+
+def get_trip_by_id(
+    trip_id: UUID,
+    db: Session,
+) -> Trip | None:
+    return db.query(Trip).filter(
+        Trip.id == trip_id
+    ).first()
+
+
+def delete_trip(
+    trip_id: UUID,
+    db: Session,
+) -> bool:
+    trip = get_trip_by_id(trip_id, db)
+
+    if trip is None:
+        return False
+
+    db.delete(trip)
+    db.commit()
+
+    return True
+
+
+def update_trip(
+    trip_id: UUID,
+    request,
+    db: Session,
+) -> Trip | None:
+
+    trip = get_trip_by_id(trip_id, db)
+
+    if trip is None:
+        return None
+
+    updates = request.model_dump(exclude_unset=True)
+
+    for field, value in updates.items():
+        setattr(trip, field, value)
+
+    if trip.origin.strip().casefold() == trip.destination.strip().casefold():
+        raise ValueError(
+            "Origin and destination must be different."
+        )
+
+    if trip.end_date < trip.start_date:
+        raise ValueError(
+            "End date must be on or after start date."
+        )
+
+    trip.estimated_budget_per_person = round(
+        float(trip.budget) / trip.travelers,
+        2,
+    )
+
+    trip.summary = (
+        f"Trip from {trip.origin} to {trip.destination} "
+        f"for {trip.travelers} traveler(s), "
+        f"with a total budget of {trip.currency} "
+        f"{float(trip.budget):,.2f}."
+    )
+
+    try:
+        db.commit()
+        db.refresh(trip)
+
+    except Exception:
+        db.rollback()
+        raise
+
+    return trip
